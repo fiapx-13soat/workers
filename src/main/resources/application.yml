@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: fiapx-workers
+  # Conexão RabbitMQ derivada de AMQP_URL (12-factor)
+  rabbitmq:
+    addresses: ${AMQP_URL:amqp://guest:guest@localhost:5672/}
+    listener:
+      simple:
+        acknowledge-mode: manual        # ack manual: msg só sai da fila após sucesso
+        prefetch: ${WORKER_PREFETCH:1}  # 1 job por vez por réplica (CA-W07)
+        # tolera a q.workers.jobs (do fiapx-infra) ainda não existir no boot: o worker
+        # sobe e passa a consumir quando a fila aparecer, sem depender da ordem de subida
+        missing-queues-fatal: ${RABBIT_MISSING_QUEUES_FATAL:false}
+  lifecycle:
+    timeout-per-shutdown-phase: ${WORKER_SHUTDOWN_TIMEOUT:120s}  # graceful shutdown (CA-W10)
+
+server:
+  shutdown: graceful
+
+# Configuração da aplicação (env vars — seção 4 do SPEC)
+workers:
+  rabbit:
+    exchange: video.processing
+    queue-jobs: q.workers.jobs
+    queue-retry: q.workers.jobs.retry
+    queue-dlq: q.workers.jobs.dlq
+  retry:
+    # backoff por tentativa (ms); nº de elementos = nº de retentativas antes da DLQ
+    delays-ms: 1000,5000,30000,120000
+  aws:
+    endpoint-url: ${AWS_ENDPOINT_URL:}          # vazio = AWS real; local = Floci
+    region: ${AWS_REGION:us-east-1}
+    s3:
+      bucket-videos: ${S3_BUCKET_VIDEOS:fiapx-videos}
+      bucket-archives: ${S3_BUCKET_ARCHIVES:fiapx-archives}
+  ffmpeg:
+    default-fps: ${DEFAULT_FPS:1}
+  shutdown-timeout: ${WORKER_SHUTDOWN_TIMEOUT:120s}
+
+# Observabilidade — rotas cruas exigidas pelo assignment (/health, /ready, /metrics)
+management:
+  endpoints:
+    web:
+      base-path: /
+      exposure:
+        include: health,prometheus
+      path-mapping:
+        health: health
+        prometheus: metrics
+  endpoint:
+    health:
+      show-details: always  # serviço interno, sem API pública; útil para diagnóstico
+      probes:
+        enabled: true       # habilita /health/liveness e /health/readiness
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}

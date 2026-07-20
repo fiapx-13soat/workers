@@ -1,0 +1,73 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# OIDC: sem access key em secret (contrato com o fiapx-infra)
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ffmpeg é necessário: os testes de extração rodam ffmpeg real via ProcessBuilder
+      - name: Instalar ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # Testcontainers (LocalStack, RabbitMQ) usa o Docker do runner ubuntu-latest
+      - name: Build e testes
+        run: mvn -B --no-transfer-progress verify
+
+  build-and-push:
+    name: Build image & push to ECR
+    needs: test
+    runs-on: ubuntu-latest
+    # só publica em push na main ou tag de versão — nunca em PR
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Definir tag imutável
+        id: meta
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Assume a role via OIDC; ARN publicado como org variable pelo fiapx-infra
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GHA_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login no ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build e push da imagem
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/fiapx-workers
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          docker build -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          echo "Imagem publicada: $IMAGE:$TAG"
