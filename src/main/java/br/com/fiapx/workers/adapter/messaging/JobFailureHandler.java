@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class JobFailureHandler {
 
-    public static final String ATTEMPT_HEADER = "x-attempt";
+    public static final String ATTEMPT_HEADER = "x-retry-count";
 
     private static final Logger log = LoggerFactory.getLogger(JobFailureHandler.class);
 
