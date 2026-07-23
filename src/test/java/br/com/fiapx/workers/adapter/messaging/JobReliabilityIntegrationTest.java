@@ -164,16 +164,21 @@ class JobReliabilityIntegrationTest {
             return new ControllableUseCase();
         }
 
+        /** Filas duráveis que no ambiente real são declaradas pelo fiapx-infra. */
         @Bean
         Declarables reliabilityTopology(TopicExchange videoProcessingExchange) {
             Queue jobs = QueueBuilder.durable("q.workers.jobs").build();
+            Queue retry = QueueBuilder.durable("q.workers.jobs.retry")
+                    .deadLetterExchange("")
+                    .deadLetterRoutingKey("q.workers.jobs")
+                    .build();
             Queue dlq = QueueBuilder.durable(DLQ).build();
             Queue results = QueueBuilder.durable(RESULTS).build();
             Binding jobsBinding = BindingBuilder.bind(jobs).to(videoProcessingExchange)
                     .with(RoutingKeys.JOB_REQUESTED);
             Binding failedBinding = BindingBuilder.bind(results).to(videoProcessingExchange)
                     .with(RoutingKeys.JOB_FAILED);
-            return new Declarables(jobs, dlq, results, jobsBinding, failedBinding);
+            return new Declarables(jobs, retry, dlq, results, jobsBinding, failedBinding);
         }
     }
 

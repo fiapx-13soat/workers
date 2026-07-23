@@ -13,9 +13,10 @@ RUN mvn -B -q clean package -DskipTests
 # ---------- runtime ----------
 FROM eclipse-temurin:21-jre-jammy AS runtime
 
-# ffmpeg é dependência de runtime do worker (extração de frames)
+# ffmpeg: dependência de runtime do worker (extração de frames)
+# curl: healthcheck do compose/ECS — a base jre-jammy não traz nenhum cliente HTTP
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Usuário não-root

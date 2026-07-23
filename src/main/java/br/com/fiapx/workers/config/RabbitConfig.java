@@ -20,8 +20,10 @@ import java.time.Duration;
 /**
  * Topologia RabbitMQ do lado do worker.
  *
- * <p>A fila durável {@code q.workers.jobs} e suas DLQs são declaradas pelo {@code fiapx-infra}
- * (fonte única em {@code definitions.json}) — o worker apenas a consome, sem redeclarar.
+ * <p>As filas duráveis {@code q.workers.jobs}, {@code q.workers.jobs.retry} e
+ * {@code q.workers.jobs.dlq} são declaradas pelo {@code fiapx-infra} (fonte única em
+ * {@code definitions.json}) — o worker apenas as consome/publica, sem redeclarar. Redeclarar aqui
+ * com argumento divergente derruba o serviço no boot com {@code 406 PRECONDITION_FAILED}.
  *
  * <p>Já a fila de <b>cancelamento</b> é exclusiva e efêmera por instância: cada réplica declara a
  * sua e a liga a {@code job.cancelled}, para que o sinal chegue por broadcast a <i>todas</i> as
@@ -56,21 +58,6 @@ public class RabbitConfig {
         return BindingBuilder.bind(workerCancellationQueue)
                 .to(videoProcessingExchange)
                 .with(RoutingKeys.JOB_CANCELLED);
-    }
-
-    /**
-     * Retry queue (detalhe de implementação do backoff do worker): sem consumidor, expiração por
-     * mensagem (definida ao publicar) e DLX de volta à fila principal via default exchange.
-     * Uma mensagem que falha é republicada aqui com {@code expiration=delay}; ao expirar, o broker
-     * a devolve a {@code q.workers.jobs} — backoff sem bloquear thread de consumo.
-     */
-    @Bean
-    public Queue workerJobsRetryQueue(@Value("${workers.rabbit.queue-retry}") String retryQueue,
-                                      @Value("${workers.rabbit.queue-jobs}") String jobsQueue) {
-        return QueueBuilder.durable(retryQueue)
-                .deadLetterExchange("")            // default exchange
-                .deadLetterRoutingKey(jobsQueue)   // volta para a fila principal
-                .build();
     }
 
     /**
