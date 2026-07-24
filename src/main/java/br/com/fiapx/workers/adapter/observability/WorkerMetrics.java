@@ -1,15 +1,15 @@
 package br.com.fiapx.workers.adapter.observability;
 
+import br.com.fiapx.workers.config.WorkersProperties;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.amqp.core.QueueInformation;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Métricas expostas em {@code /metrics} (Prometheus), conforme CA-W09:
@@ -29,9 +29,12 @@ public class WorkerMetrics {
     private final Counter completed;
     private final Counter failed;
 
-    public WorkerMetrics(MeterRegistry registry,
-                         RabbitAdmin rabbitAdmin,
-                         @Value("${workers.rabbit.queue-jobs}") String jobsQueue) {
+    @Autowired
+    public WorkerMetrics(MeterRegistry registry, RabbitAdmin rabbitAdmin, WorkersProperties props) {
+        this(registry, rabbitAdmin, props.rabbit().queueJobs());
+    }
+
+    WorkerMetrics(MeterRegistry registry, RabbitAdmin rabbitAdmin, String jobsQueue) {
         this.registry = registry;
 
         Gauge.builder("workers.jobs.processing", processing, AtomicInteger::get)

@@ -18,6 +18,5 @@ public final class EventTypes {
     public static final String ARCHIVE_READY = "ArchiveReady";
     public static final String PROCESSING_FAILED = "ProcessingFailed";
 
-    private EventTypes() {
-    }
+    private EventTypes() {}
 }

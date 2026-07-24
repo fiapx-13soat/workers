@@ -1,21 +1,20 @@
 package br.com.fiapx.workers.adapter.messaging;
 
-import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.adapter.messaging.wire.ProcessingRequestedMessage;
 import br.com.fiapx.workers.adapter.observability.WorkerMetrics;
+import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.model.ProcessingParameters;
 import com.rabbitmq.client.Channel;
 import io.micrometer.core.instrument.Timer;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
-
-import java.io.IOException;
 
 /**
  * Consome {@code ProcessingRequested} de {@code q.workers.jobs} (ack manual, prefetch=1),
@@ -36,8 +35,11 @@ public class JobConsumer {
     private final JobFailureHandler failureHandler;
     private final WorkerMetrics metrics;
 
-    public JobConsumer(ProcessVideoUseCase useCase, EventEnvelopeCodec codec,
-                       JobFailureHandler failureHandler, WorkerMetrics metrics) {
+    public JobConsumer(
+            ProcessVideoUseCase useCase,
+            EventEnvelopeCodec codec,
+            JobFailureHandler failureHandler,
+            WorkerMetrics metrics) {
         this.useCase = useCase;
         this.codec = codec;
         this.failureHandler = failureHandler;
@@ -49,14 +51,13 @@ public class JobConsumer {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         int attempt = failureHandler.attemptOf(message);
 
-        // 1) Decodificação (falha aqui = mensagem malformada → DLQ, sem retry)
+        // falha na decodificação = mensagem malformada → DLQ, sem retry
         ProcessingRequested request;
         String correlationId;
         try {
             EventEnvelopeCodec.Decoded decoded = codec.decode(message.getBody());
             correlationId = decoded.correlationId();
-            ProcessingRequestedMessage wire =
-                    codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
+            ProcessingRequestedMessage wire = codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
             request = toDomain(wire);
         } catch (MessageDecodingException | IllegalArgumentException bad) {
             String jobId = tryExtractJobId(message);
@@ -66,7 +67,6 @@ public class JobConsumer {
             return;
         }
 
-        // 2) Processamento
         MDC.put("correlationId", correlationId);
         MDC.put("jobId", request.jobId());
         Timer.Sample sample = metrics.startProcessing();
@@ -76,15 +76,27 @@ public class JobConsumer {
             channel.basicAck(deliveryTag, false);
         } catch (ProcessingException pe) {
             metrics.failed(sample);
-            failureHandler.onProcessingFailure(message, attempt, request.jobId(), correlationId,
-                    pe.errorCode(), pe.friendlyMessage(), pe.isTransient());
+            failureHandler.onProcessingFailure(
+                    message,
+                    attempt,
+                    request.jobId(),
+                    correlationId,
+                    pe.errorCode(),
+                    pe.friendlyMessage(),
+                    pe.isTransient());
             channel.basicAck(deliveryTag, false);
         } catch (Exception e) {
             // inesperado → tratado como transitório (dá chance de retry)
             metrics.failed(sample);
             log.error("Erro inesperado no job {}: {}", request.jobId(), e.getMessage(), e);
-            failureHandler.onProcessingFailure(message, attempt, request.jobId(), correlationId,
-                    "INTERNAL", "Erro interno ao processar o vídeo.", true);
+            failureHandler.onProcessingFailure(
+                    message,
+                    attempt,
+                    request.jobId(),
+                    correlationId,
+                    "INTERNAL",
+                    "Erro interno ao processar o vídeo.",
+                    true);
             channel.basicAck(deliveryTag, false);
         } finally {
             MDC.clear();
@@ -96,15 +108,14 @@ public class JobConsumer {
         if (wire.parameters() != null && wire.parameters().fps() != null) {
             parameters = new ProcessingParameters(wire.parameters().fps()); // valida fps > 0
         }
-        return new ProcessingRequested(
-                wire.jobId(), wire.videoStorageKey(), parameters, wire.ownerId());
+        return new ProcessingRequested(wire.jobId(), wire.videoStorageKey(), parameters, wire.ownerId());
     }
 
     /** Tentativa best-effort de recuperar o jobId de uma mensagem malformada (para notificar). */
     private String tryExtractJobId(Message message) {
         try {
-            return codec.toPayload(codec.decode(message.getBody()).payload(),
-                    ProcessingRequestedMessage.class).jobId();
+            return codec.toPayload(codec.decode(message.getBody()).payload(), ProcessingRequestedMessage.class)
+                    .jobId();
         } catch (RuntimeException e) {
             return null;
         }

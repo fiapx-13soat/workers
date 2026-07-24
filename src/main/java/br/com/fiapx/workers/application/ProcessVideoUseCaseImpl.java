@@ -1,5 +1,6 @@
 package br.com.fiapx.workers.application;
 
+import br.com.fiapx.workers.config.WorkersProperties;
 import br.com.fiapx.workers.domain.event.ArchiveReady;
 import br.com.fiapx.workers.domain.event.ProcessingCompleted;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
@@ -15,16 +16,15 @@ import br.com.fiapx.workers.domain.port.EventPublisher;
 import br.com.fiapx.workers.domain.port.FrameArchiver;
 import br.com.fiapx.workers.domain.port.FrameExtractor;
 import br.com.fiapx.workers.domain.port.VideoStorage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 /**
  * Fluxo de processamento de um vídeo, orquestrando os ports:
@@ -58,13 +58,33 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
     private final CancellationRegistry cancellationRegistry;
     private final int defaultFps;
 
-    public ProcessVideoUseCaseImpl(VideoStorage videoStorage,
-                                   ArchiveStorage archiveStorage,
-                                   FrameExtractor frameExtractor,
-                                   FrameArchiver frameArchiver,
-                                   EventPublisher publisher,
-                                   CancellationRegistry cancellationRegistry,
-                                   @Value("${workers.ffmpeg.default-fps:1}") int defaultFps) {
+    @Autowired
+    public ProcessVideoUseCaseImpl(
+            VideoStorage videoStorage,
+            ArchiveStorage archiveStorage,
+            FrameExtractor frameExtractor,
+            FrameArchiver frameArchiver,
+            EventPublisher publisher,
+            CancellationRegistry cancellationRegistry,
+            WorkersProperties props) {
+        this(
+                videoStorage,
+                archiveStorage,
+                frameExtractor,
+                frameArchiver,
+                publisher,
+                cancellationRegistry,
+                props.ffmpeg().defaultFps());
+    }
+
+    ProcessVideoUseCaseImpl(
+            VideoStorage videoStorage,
+            ArchiveStorage archiveStorage,
+            FrameExtractor frameExtractor,
+            FrameArchiver frameArchiver,
+            EventPublisher publisher,
+            CancellationRegistry cancellationRegistry,
+            int defaultFps) {
         this.videoStorage = videoStorage;
         this.archiveStorage = archiveStorage;
         this.frameExtractor = frameExtractor;
@@ -77,8 +97,7 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
     @Override
     public void handle(ProcessingRequested request, String correlationId) {
         ProcessingParameters params = ProcessingParameters.resolve(request.parameters(), defaultFps);
-        Job job = new Job(request.jobId(), request.ownerId(),
-                request.videoStorageKey(), params, correlationId);
+        Job job = new Job(request.jobId(), request.ownerId(), request.videoStorageKey(), params, correlationId);
 
         // Idempotência: job já concluído → ack sem reprocessar (CA-W03)
         if (archiveStorage.exists(job.doneMarkerKey())) {
@@ -86,7 +105,6 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
             return;
         }
 
-        // Cancelamento antes de iniciar
         if (cancellationRegistry.isCancelled(job.jobId())) {
             log.info("Job {} cancelado antes de iniciar", job.jobId());
             cancellationRegistry.clear(job.jobId());
@@ -102,8 +120,8 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
             workDir = Files.createTempDirectory("fiapx-job-" + job.jobId() + "-");
             Path video = videoStorage.download(job.videoStorageKey(), workDir);
 
-            FrameExtractionResult extraction = frameExtractor.extract(
-                    video, params, () -> cancellationRegistry.isCancelled(job.jobId()));
+            FrameExtractionResult extraction =
+                    frameExtractor.extract(video, params, () -> cancellationRegistry.isCancelled(job.jobId()));
             framesDir = extraction.framesDirectory();
 
             // Ponto seguro antes de subir o resultado
@@ -125,8 +143,7 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
             safeDeleteArchive(job.archiveStorageKey());
             // CA-W06: não publica ProcessingCompleted
         } catch (IOException e) {
-            throw ProcessingException.transientFailure(
-                    "TEMP_DIR", "Falha ao preparar o processamento do vídeo.", e);
+            throw ProcessingException.transientFailure("TEMP_DIR", "Falha ao preparar o processamento do vídeo.", e);
         } finally {
             cancellationRegistry.clear(job.jobId());
             deleteDirQuietly(workDir);

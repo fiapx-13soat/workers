@@ -3,7 +3,6 @@ package br.com.fiapx.workers.domain.port;
 import br.com.fiapx.workers.domain.model.FrameExtractionResult;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.model.ProcessingParameters;
-
 import java.nio.file.Path;
 
 /**
@@ -19,6 +18,6 @@ public interface FrameExtractor {
      * @throws ProcessingException classificada como transitória ou determinística
      * @throws CancelledException  se o cancelamento foi sinalizado durante a extração
      */
-    FrameExtractionResult extract(Path videoFile, ProcessingParameters parameters,
-                                  CancellationCheck cancellationCheck) throws ProcessingException;
+    FrameExtractionResult extract(Path videoFile, ProcessingParameters parameters, CancellationCheck cancellationCheck)
+            throws ProcessingException;
 }

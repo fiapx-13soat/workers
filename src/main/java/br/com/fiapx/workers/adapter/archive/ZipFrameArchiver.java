@@ -2,8 +2,6 @@ package br.com.fiapx.workers.adapter.archive;
 
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.port.FrameArchiver;
-import org.springframework.stereotype.Component;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -12,6 +10,7 @@ import java.util.List;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import org.springframework.stereotype.Component;
 
 /**
  * Zipa os PNGs de um diretório em ordem determinística (nome), usando Deflate.
@@ -23,7 +22,7 @@ public class ZipFrameArchiver implements FrameArchiver {
     @Override
     public int archive(Path framesDirectory, Path zipTarget) {
         try (OutputStream out = Files.newOutputStream(zipTarget);
-             ZipOutputStream zip = new ZipOutputStream(out)) {
+                ZipOutputStream zip = new ZipOutputStream(out)) {
 
             zip.setLevel(java.util.zip.Deflater.DEFAULT_COMPRESSION);
 
@@ -41,8 +40,7 @@ public class ZipFrameArchiver implements FrameArchiver {
             return files.size();
 
         } catch (IOException e) {
-            throw ProcessingException.transientFailure(
-                    "ZIP_FAILED", "Falha ao gerar o arquivo de resultado.", e);
+            throw ProcessingException.transientFailure("ZIP_FAILED", "Falha ao gerar o arquivo de resultado.", e);
         }
     }
 }

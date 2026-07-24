@@ -1,15 +1,14 @@
 package br.com.fiapx.workers.adapter.messaging;
 
+import br.com.fiapx.workers.config.WorkersProperties;
 import br.com.fiapx.workers.domain.event.OutboundEvent;
 import br.com.fiapx.workers.domain.port.EventPublisher;
+import java.util.UUID;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-
-import java.util.UUID;
 
 /**
  * Publica eventos de resultado no exchange {@code video.processing}, envolvidos no envelope
@@ -22,12 +21,10 @@ public class RabbitEventPublisher implements EventPublisher {
     private final EventEnvelopeCodec codec;
     private final String exchange;
 
-    public RabbitEventPublisher(RabbitTemplate rabbitTemplate,
-                                EventEnvelopeCodec codec,
-                                @Value("${workers.rabbit.exchange}") String exchange) {
+    public RabbitEventPublisher(RabbitTemplate rabbitTemplate, EventEnvelopeCodec codec, WorkersProperties props) {
         this.rabbitTemplate = rabbitTemplate;
         this.codec = codec;
-        this.exchange = exchange;
+        this.exchange = props.rabbit().exchange();
     }
 
     @Override

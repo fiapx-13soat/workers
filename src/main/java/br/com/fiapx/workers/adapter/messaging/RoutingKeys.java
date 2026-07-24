@@ -21,8 +21,7 @@ public final class RoutingKeys {
     public static final String ARCHIVE_READY = "archive.ready";
     public static final String JOB_FAILED = "job.failed";
 
-    private RoutingKeys() {
-    }
+    private RoutingKeys() {}
 
     /**
      * Mapeia o evento publicado para sua routing key. Switch exaustivo sobre a interface selada:

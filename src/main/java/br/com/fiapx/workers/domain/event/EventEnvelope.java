@@ -9,11 +9,4 @@ import java.time.Instant;
  * @param <T> tipo do payload específico do evento
  */
 public record EventEnvelope<T>(
-        String eventType,
-        int schemaVersion,
-        String eventId,
-        Instant occurredAt,
-        String correlationId,
-        T payload
-) {
-}
+        String eventType, int schemaVersion, String eventId, Instant occurredAt, String correlationId, T payload) {}

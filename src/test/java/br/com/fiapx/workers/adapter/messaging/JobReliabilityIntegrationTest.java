@@ -1,10 +1,19 @@
 package br.com.fiapx.workers.adapter.messaging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
@@ -27,16 +36,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Confiabilidade do consumo contra RabbitMQ real: backoff/retry, DLQ e ProcessingFailed.
  * Delays curtos ({@code 300,300}) para o teste ser rápido mas exercitar o caminho do broker.
@@ -46,8 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JobReliabilityIntegrationTest {
 
     @Container
-    static final RabbitMQContainer rabbit = new RabbitMQContainer(
-            DockerImageName.parse("rabbitmq:3.13-management"));
+    static final RabbitMQContainer rabbit = new RabbitMQContainer(DockerImageName.parse("rabbitmq:3.13-management"));
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
@@ -59,6 +57,7 @@ class JobReliabilityIntegrationTest {
 
     @Autowired
     RabbitTemplate rabbitTemplate;
+
     @Autowired
     ControllableUseCase useCase;
 
@@ -126,7 +125,8 @@ class JobReliabilityIntegrationTest {
     // ---- helpers ----
 
     private void sendJob(String jobId) {
-        String body = String.format("""
+        String body = String.format(
+                """
                 {"eventType":"ProcessingRequested","schemaVersion":1,"eventId":"e",
                  "occurredAt":"2026-07-20T10:00:00Z","correlationId":"corr-%s",
                  "payload":{"jobId":"%s","videoStorageKey":"videos/%s.mp4","ownerId":"o1"}}""",
@@ -164,22 +164,31 @@ class JobReliabilityIntegrationTest {
             return new ControllableUseCase();
         }
 
+        /** Filas duráveis que no ambiente real são declaradas pelo fiapx-infra. */
         @Bean
         Declarables reliabilityTopology(TopicExchange videoProcessingExchange) {
             Queue jobs = QueueBuilder.durable("q.workers.jobs").build();
+            Queue retry = QueueBuilder.durable("q.workers.jobs.retry")
+                    .deadLetterExchange("")
+                    .deadLetterRoutingKey("q.workers.jobs")
+                    .build();
             Queue dlq = QueueBuilder.durable(DLQ).build();
             Queue results = QueueBuilder.durable(RESULTS).build();
-            Binding jobsBinding = BindingBuilder.bind(jobs).to(videoProcessingExchange)
-                    .with(RoutingKeys.JOB_REQUESTED);
-            Binding failedBinding = BindingBuilder.bind(results).to(videoProcessingExchange)
-                    .with(RoutingKeys.JOB_FAILED);
-            return new Declarables(jobs, dlq, results, jobsBinding, failedBinding);
+            Binding jobsBinding =
+                    BindingBuilder.bind(jobs).to(videoProcessingExchange).with(RoutingKeys.JOB_REQUESTED);
+            Binding failedBinding =
+                    BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_FAILED);
+            return new Declarables(jobs, retry, dlq, results, jobsBinding, failedBinding);
         }
     }
 
     /** Use case controlável para exercitar a política de falha do consumer. */
     static class ControllableUseCase implements ProcessVideoUseCase {
-        enum Mode {SUCCESS, TRANSIENT, DETERMINISTIC}
+        enum Mode {
+            SUCCESS,
+            TRANSIENT,
+            DETERMINISTIC
+        }
 
         final AtomicInteger attempts = new AtomicInteger();
         volatile Mode mode = Mode.SUCCESS;
@@ -214,8 +223,7 @@ class JobReliabilityIntegrationTest {
                         "BAD_VIDEO", "Vídeo inválido.", null);
                 case TRANSIENT -> {
                     if (n <= transientFailures) {
-                        throw ProcessingException.transientFailure(
-                                "S3_DOWNLOAD", "Falha temporária.", null);
+                        throw ProcessingException.transientFailure("S3_DOWNLOAD", "Falha temporária.", null);
                     }
                     successLatch.countDown();
                 }
