@@ -105,7 +105,6 @@ public class ProcessVideoUseCaseImpl implements ProcessVideoUseCase {
             return;
         }
 
-        // Cancelamento antes de iniciar
         if (cancellationRegistry.isCancelled(job.jobId())) {
             log.info("Job {} cancelado antes de iniciar", job.jobId());
             cancellationRegistry.clear(job.jobId());

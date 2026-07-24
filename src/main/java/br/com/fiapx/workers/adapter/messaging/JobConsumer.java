@@ -51,7 +51,7 @@ public class JobConsumer {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         int attempt = failureHandler.attemptOf(message);
 
-        // 1) Decodificação (falha aqui = mensagem malformada → DLQ, sem retry)
+        // falha na decodificação = mensagem malformada → DLQ, sem retry
         ProcessingRequested request;
         String correlationId;
         try {
@@ -67,7 +67,6 @@ public class JobConsumer {
             return;
         }
 
-        // 2) Processamento
         MDC.put("correlationId", correlationId);
         MDC.put("jobId", request.jobId());
         Timer.Sample sample = metrics.startProcessing();
