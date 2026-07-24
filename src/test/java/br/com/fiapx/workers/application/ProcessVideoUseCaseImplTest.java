@@ -1,5 +1,10 @@
 package br.com.fiapx.workers.application;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import br.com.fiapx.workers.adapter.archive.ZipFrameArchiver;
 import br.com.fiapx.workers.adapter.cancellation.InMemoryCancellationRegistry;
 import br.com.fiapx.workers.adapter.ffmpeg.FfmpegFrameExtractor;
@@ -8,14 +13,10 @@ import br.com.fiapx.workers.domain.event.OutboundEvent;
 import br.com.fiapx.workers.domain.event.ProcessingCompleted;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
 import br.com.fiapx.workers.domain.event.ProcessingStarted;
-import br.com.fiapx.workers.domain.model.ProcessingParameters;
 import br.com.fiapx.workers.domain.port.ArchiveStorage;
 import br.com.fiapx.workers.domain.port.CancellationRegistry;
 import br.com.fiapx.workers.domain.port.EventPublisher;
 import br.com.fiapx.workers.domain.port.VideoStorage;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,11 +25,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Orquestração do use case com ffmpeg e zip <b>reais</b> e fakes em memória para S3/eventos.
@@ -44,15 +42,20 @@ class ProcessVideoUseCaseImplTest {
 
     @BeforeEach
     void setup() throws Exception {
-        Path fixture = Path.of(getClass().getClassLoader().getResource("fixtures/sample.mp4").toURI());
+        Path fixture = Path.of(
+                getClass().getClassLoader().getResource("fixtures/sample.mp4").toURI());
         videoStorage = new FakeVideoStorage(fixture);
         archiveStorage = new InMemoryArchiveStorage();
         publisher = new RecordingPublisher();
         cancellation = new InMemoryCancellationRegistry();
         useCase = new ProcessVideoUseCaseImpl(
-                videoStorage, archiveStorage,
-                new FfmpegFrameExtractor("ffmpeg"), new ZipFrameArchiver(),
-                publisher, cancellation, 1);
+                videoStorage,
+                archiveStorage,
+                new FfmpegFrameExtractor("ffmpeg"),
+                new ZipFrameArchiver(),
+                publisher,
+                cancellation,
+                1);
     }
 
     private ProcessingRequested request(String jobId) {
@@ -103,9 +106,13 @@ class ProcessVideoUseCaseImplTest {
         // false na pré-checagem (publica Started), true na entrada do extractor (aborta)
         CountingCancellationRegistry counting = new CountingCancellationRegistry();
         var uc = new ProcessVideoUseCaseImpl(
-                videoStorage, archiveStorage,
-                new FfmpegFrameExtractor("ffmpeg"), new ZipFrameArchiver(),
-                publisher, counting, 1);
+                videoStorage,
+                archiveStorage,
+                new FfmpegFrameExtractor("ffmpeg"),
+                new ZipFrameArchiver(),
+                publisher,
+                counting,
+                1);
 
         uc.handle(request("job-4"), "corr-4");
 
@@ -180,8 +187,7 @@ class ProcessVideoUseCaseImplTest {
         private final AtomicInteger calls = new AtomicInteger();
 
         @Override
-        public void markCancelled(String jobId) {
-        }
+        public void markCancelled(String jobId) {}
 
         @Override
         public boolean isCancelled(String jobId) {
@@ -189,7 +195,6 @@ class ProcessVideoUseCaseImplTest {
         }
 
         @Override
-        public void clear(String jobId) {
-        }
+        public void clear(String jobId) {}
     }
 }

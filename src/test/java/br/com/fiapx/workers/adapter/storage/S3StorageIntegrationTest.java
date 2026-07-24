@@ -1,6 +1,14 @@
 package br.com.fiapx.workers.adapter.storage;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import br.com.fiapx.workers.domain.model.ProcessingException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -18,16 +26,6 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Integração dos adapters S3 contra LocalStack (emula o S3 do Floci). Requer Docker.
  */
@@ -40,7 +38,7 @@ class S3StorageIntegrationTest {
 
     @Container
     static final LocalStackContainer localstack = new LocalStackContainer(
-            DockerImageName.parse("localstack/localstack:3.8"))
+                    DockerImageName.parse("localstack/localstack:3.8"))
             .withServices(LocalStackContainer.Service.S3);
 
     private S3Client s3;
@@ -72,7 +70,11 @@ class S3StorageIntegrationTest {
     @Test
     void baixaVideoDoBucket(@TempDir Path tempDir) throws Exception {
         byte[] content = "conteudo-do-video".getBytes();
-        s3.putObject(PutObjectRequest.builder().bucket(VIDEOS).key("videos/job-1.mp4").build(),
+        s3.putObject(
+                PutObjectRequest.builder()
+                        .bucket(VIDEOS)
+                        .key("videos/job-1.mp4")
+                        .build(),
                 RequestBody.fromBytes(content));
 
         Path downloaded = videoStorage.download("videos/job-1.mp4", tempDir);
@@ -84,8 +86,8 @@ class S3StorageIntegrationTest {
 
     @Test
     void videoInexistenteGeraFalhaDeterministica(@TempDir Path tempDir) {
-        ProcessingException ex = assertThrows(ProcessingException.class,
-                () -> videoStorage.download("videos/nao-existe.mp4", tempDir));
+        ProcessingException ex =
+                assertThrows(ProcessingException.class, () -> videoStorage.download("videos/nao-existe.mp4", tempDir));
         assertFalse(ex.isTransient());
         assertEquals("VIDEO_NOT_FOUND", ex.errorCode());
     }
@@ -93,7 +95,7 @@ class S3StorageIntegrationTest {
     @Test
     void uploadRetornaTamanhoEExists(@TempDir Path tempDir) throws Exception {
         Path zip = tempDir.resolve("out.zip");
-        Files.write(zip, new byte[]{1, 2, 3, 4, 5});
+        Files.write(zip, new byte[] {1, 2, 3, 4, 5});
 
         long size = archiveStorage.upload(zip, "archives/job-2.zip");
 
@@ -112,7 +114,7 @@ class S3StorageIntegrationTest {
     @Test
     void deleteRemoveObjeto(@TempDir Path tempDir) throws Exception {
         Path zip = tempDir.resolve("del.zip");
-        Files.write(zip, new byte[]{9, 9});
+        Files.write(zip, new byte[] {9, 9});
         archiveStorage.upload(zip, "archives/job-4.zip");
         assertTrue(archiveStorage.exists("archives/job-4.zip"));
 

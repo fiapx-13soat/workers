@@ -1,15 +1,15 @@
 package br.com.fiapx.workers.adapter.observability;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.QueueInformation;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class WorkerMetricsTest {
 
@@ -60,8 +60,7 @@ class WorkerMetricsTest {
 
     @Test
     void queueDepthRefleteOBroker() {
-        when(rabbitAdmin.getQueueInfo("q.workers.jobs"))
-                .thenReturn(new QueueInformation("q.workers.jobs", 7, 2));
+        when(rabbitAdmin.getQueueInfo("q.workers.jobs")).thenReturn(new QueueInformation("q.workers.jobs", 7, 2));
         assertEquals(7, gauge("workers.queue.depth"));
     }
 

@@ -5,12 +5,7 @@ package br.com.fiapx.workers.domain.model;
  * precisa para processar. Sem estado mutável — o estado permanente é do Core.
  */
 public record Job(
-        String jobId,
-        String ownerId,
-        String videoStorageKey,
-        ProcessingParameters parameters,
-        String correlationId
-) {
+        String jobId, String ownerId, String videoStorageKey, ProcessingParameters parameters, String correlationId) {
 
     public Job {
         if (jobId == null || jobId.isBlank()) {

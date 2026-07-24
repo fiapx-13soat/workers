@@ -14,8 +14,7 @@ public class ProcessingException extends RuntimeException {
     private final boolean transientError;
     private final String friendlyMessage;
 
-    public ProcessingException(String errorCode, String friendlyMessage,
-                               boolean transientError, Throwable cause) {
+    public ProcessingException(String errorCode, String friendlyMessage, boolean transientError, Throwable cause) {
         super(friendlyMessage, cause);
         this.errorCode = errorCode;
         this.friendlyMessage = friendlyMessage;

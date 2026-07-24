@@ -1,22 +1,22 @@
 package br.com.fiapx.workers.adapter.ffmpeg;
 
+import br.com.fiapx.workers.config.WorkersProperties;
 import br.com.fiapx.workers.domain.model.CancelledException;
 import br.com.fiapx.workers.domain.model.FrameExtractionResult;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.model.ProcessingParameters;
 import br.com.fiapx.workers.domain.port.CancellationCheck;
 import br.com.fiapx.workers.domain.port.FrameExtractor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 /**
  * Extrai frames via ffmpeg ({@code ProcessBuilder}), portando o comando do projeto base:
@@ -40,13 +40,19 @@ public class FfmpegFrameExtractor implements FrameExtractor {
 
     private final String ffmpegBinary;
 
-    public FfmpegFrameExtractor(@Value("${workers.ffmpeg.binary:ffmpeg}") String ffmpegBinary) {
+    @Autowired
+    public FfmpegFrameExtractor(WorkersProperties props) {
+        this(props.ffmpeg().binary());
+    }
+
+    // público: usado por testes de outros pacotes (ex.: ProcessVideoUseCaseImplTest)
+    public FfmpegFrameExtractor(String ffmpegBinary) {
         this.ffmpegBinary = ffmpegBinary;
     }
 
     @Override
-    public FrameExtractionResult extract(Path videoFile, ProcessingParameters parameters,
-                                         CancellationCheck cancellationCheck) {
+    public FrameExtractionResult extract(
+            Path videoFile, ProcessingParameters parameters, CancellationCheck cancellationCheck) {
         // Ponto seguro: não gasta ffmpeg se o job já foi cancelado.
         if (cancellationCheck.isCancelled()) {
             throw new CancelledException();
@@ -70,8 +76,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
             List<Path> frames = listFrames(framesDir);
             if (frames.isEmpty()) {
                 cleanup(framesDir);
-                throw ProcessingException.deterministicFailure(
-                        "NO_FRAMES", "O vídeo não gerou nenhum quadro.", null);
+                throw ProcessingException.deterministicFailure("NO_FRAMES", "O vídeo não gerou nenhum quadro.", null);
             }
 
             log.info("Extraídos {} frames (fps={})", frames.size(), parameters.fps());
@@ -85,12 +90,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
     private Process start(Path videoFile, ProcessingParameters parameters, Path framesDir, Path logFile) {
         String pattern = framesDir.resolve("frame_%04d.png").toString();
         ProcessBuilder pb = new ProcessBuilder(
-                ffmpegBinary,
-                "-i", videoFile.toString(),
-                "-vf", "fps=" + parameters.fps(),
-                "-y",
-                pattern
-        );
+                ffmpegBinary, "-i", videoFile.toString(), "-vf", "fps=" + parameters.fps(), "-y", pattern);
         pb.redirectErrorStream(true);
         pb.redirectOutput(logFile.toFile()); // evita deadlock de buffer e guarda diagnóstico
         try {
@@ -103,8 +103,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
         }
     }
 
-    private void waitForCompletion(Process process, CancellationCheck cancellationCheck,
-                                   Path framesDir, Path logFile) {
+    private void waitForCompletion(Process process, CancellationCheck cancellationCheck, Path framesDir, Path logFile) {
         try {
             while (!process.waitFor(POLL_INTERVAL_MS, TimeUnit.MILLISECONDS)) {
                 if (cancellationCheck.isCancelled()) {
@@ -119,8 +118,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
             process.destroyForcibly();
             cleanup(framesDir);
             deleteQuietly(logFile);
-            throw ProcessingException.transientFailure(
-                    "INTERRUPTED", "Processamento interrompido.", e);
+            throw ProcessingException.transientFailure("INTERRUPTED", "Processamento interrompido.", e);
         }
     }
 
@@ -132,8 +130,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
                     .toList();
         } catch (IOException e) {
             cleanup(framesDir);
-            throw ProcessingException.transientFailure(
-                    "LIST_FRAMES", "Falha ao ler os quadros extraídos.", e);
+            throw ProcessingException.transientFailure("LIST_FRAMES", "Falha ao ler os quadros extraídos.", e);
         }
     }
 
@@ -141,8 +138,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
         try {
             return Files.createTempDirectory("fiapx-frames-");
         } catch (IOException e) {
-            throw ProcessingException.transientFailure(
-                    "TEMP_DIR", "Falha ao preparar o processamento.", e);
+            throw ProcessingException.transientFailure("TEMP_DIR", "Falha ao preparar o processamento.", e);
         }
     }
 
@@ -150,8 +146,7 @@ public class FfmpegFrameExtractor implements FrameExtractor {
         try {
             return Files.createTempFile("fiapx-ffmpeg-", ".log");
         } catch (IOException e) {
-            throw ProcessingException.transientFailure(
-                    "TEMP_LOG", "Falha ao preparar o processamento.", e);
+            throw ProcessingException.transientFailure("TEMP_LOG", "Falha ao preparar o processamento.", e);
         }
     }
 

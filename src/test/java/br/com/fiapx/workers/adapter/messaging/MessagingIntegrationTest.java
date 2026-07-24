@@ -1,5 +1,11 @@
 package br.com.fiapx.workers.adapter.messaging;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.domain.event.ArchiveReady;
 import br.com.fiapx.workers.domain.event.ProcessingFailed;
@@ -9,6 +15,11 @@ import br.com.fiapx.workers.domain.port.CancellationRegistry;
 import br.com.fiapx.workers.domain.port.EventPublisher;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -29,40 +40,29 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-import java.time.Instant;
-import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 @Testcontainers
 @SpringBootTest
 class MessagingIntegrationTest {
 
     @Container
-    static final RabbitMQContainer rabbit = new RabbitMQContainer(
-            DockerImageName.parse("rabbitmq:3.13-management"));
+    static final RabbitMQContainer rabbit = new RabbitMQContainer(DockerImageName.parse("rabbitmq:3.13-management"));
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
-        registry.add("spring.rabbitmq.addresses",
-                () -> rabbit.getHost() + ":" + rabbit.getAmqpPort());
+        registry.add("spring.rabbitmq.addresses", () -> rabbit.getHost() + ":" + rabbit.getAmqpPort());
         registry.add("spring.rabbitmq.username", rabbit::getAdminUsername);
         registry.add("spring.rabbitmq.password", rabbit::getAdminPassword);
     }
 
     @Autowired
     RabbitTemplate rabbitTemplate;
+
     @Autowired
     EventPublisher publisher;
+
     @Autowired
     CancellationRegistry cancellationRegistry;
+
     @Autowired
     RecordingUseCase recordingUseCase;
 
@@ -76,7 +76,8 @@ class MessagingIntegrationTest {
     @Test
     void consomeProcessingRequestedEDelegaAoUseCase() throws Exception {
         recordingUseCase.reset();
-        String body = """
+        String body =
+                """
                 {"eventType":"ProcessingRequested","schemaVersion":1,"eventId":"e1",
                  "occurredAt":"2026-07-20T10:00:00Z","correlationId":"corr-1",
                  "payload":{"jobId":"job-1","videoStorageKey":"videos/job-1.mp4",
@@ -94,7 +95,8 @@ class MessagingIntegrationTest {
     @Test
     void toleraParametersVazioResolvendoParaNull() throws Exception {
         recordingUseCase.reset();
-        String body = """
+        String body =
+                """
                 {"eventType":"ProcessingRequested","schemaVersion":1,"eventId":"e2",
                  "occurredAt":"2026-07-20T10:00:00Z","correlationId":"corr-2",
                  "payload":{"jobId":"job-2","videoStorageKey":"videos/job-2.mp4",
@@ -102,7 +104,8 @@ class MessagingIntegrationTest {
         rabbitTemplate.convertAndSend(EXCHANGE, RoutingKeys.JOB_REQUESTED, body.getBytes());
 
         assertTrue(recordingUseCase.await(10));
-        assertNull(recordingUseCase.last.get().parameters(),
+        assertNull(
+                recordingUseCase.last.get().parameters(),
                 "parameters vazio deve virar null (default resolvido no domínio)");
     }
 
@@ -111,8 +114,7 @@ class MessagingIntegrationTest {
     @Test
     void publicaProcessingFailedComEnvelopeECampoTransient() throws Exception {
         publisher.publish(
-                new ProcessingFailed("job-9", "BAD_VIDEO", "Não foi possível processar o vídeo.", false),
-                "corr-9");
+                new ProcessingFailed("job-9", "BAD_VIDEO", "Não foi possível processar o vídeo.", false), "corr-9");
 
         JsonNode env = receiveAsJson();
         assertEquals("ProcessingFailed", env.get("eventType").asText());
@@ -137,7 +139,9 @@ class MessagingIntegrationTest {
         publisher.publish(new ArchiveReady("job-11", "archives/job-11.zip", 2048), "corr-11");
         JsonNode archive = receiveAsJson();
         assertEquals("ArchiveReady", archive.get("eventType").asText());
-        assertEquals("archives/job-11.zip", archive.get("payload").get("archiveStorageKey").asText());
+        assertEquals(
+                "archives/job-11.zip",
+                archive.get("payload").get("archiveStorageKey").asText());
         assertEquals(2048, archive.get("payload").get("sizeBytes").asLong());
     }
 
@@ -146,10 +150,12 @@ class MessagingIntegrationTest {
     @Test
     void consomeProcessingCancelledEMarcaRegistry() throws Exception {
         String jobId = "job-cancel-" + UUID.randomUUID();
-        String body = String.format("""
+        String body = String.format(
+                """
                 {"eventType":"ProcessingCancelled","schemaVersion":1,"eventId":"ec",
                  "occurredAt":"%s","correlationId":"corr-c",
-                 "payload":{"jobId":"%s"}}""", Instant.now(), jobId);
+                 "payload":{"jobId":"%s"}}""",
+                Instant.now(), jobId);
         rabbitTemplate.convertAndSend(EXCHANGE, RoutingKeys.JOB_CANCELLED, body.getBytes());
 
         boolean marked = false;
@@ -182,13 +188,17 @@ class MessagingIntegrationTest {
         Declarables jobsTopology(TopicExchange videoProcessingExchange) {
             Queue jobs = QueueBuilder.durable("q.workers.jobs").build();
             Queue results = QueueBuilder.durable(RESULTS_QUEUE).build();
-            Binding jobsBinding = BindingBuilder.bind(jobs).to(videoProcessingExchange)
-                    .with(RoutingKeys.JOB_REQUESTED);
+            Binding jobsBinding =
+                    BindingBuilder.bind(jobs).to(videoProcessingExchange).with(RoutingKeys.JOB_REQUESTED);
             // captura de todos os eventos de resultado publicados
-            Binding started = BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_STARTED);
-            Binding completed = BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_COMPLETED);
-            Binding failed = BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_FAILED);
-            Binding archive = BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.ARCHIVE_READY);
+            Binding started =
+                    BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_STARTED);
+            Binding completed =
+                    BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_COMPLETED);
+            Binding failed =
+                    BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.JOB_FAILED);
+            Binding archive =
+                    BindingBuilder.bind(results).to(videoProcessingExchange).with(RoutingKeys.ARCHIVE_READY);
             return new Declarables(jobs, results, jobsBinding, started, completed, failed, archive);
         }
     }

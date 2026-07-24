@@ -3,13 +3,12 @@ package br.com.fiapx.workers.adapter.messaging;
 import br.com.fiapx.workers.adapter.messaging.wire.ProcessingCancelledMessage;
 import br.com.fiapx.workers.domain.port.CancellationRegistry;
 import com.rabbitmq.client.Channel;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
-
-import java.io.IOException;
 
 /**
  * Consome {@code ProcessingCancelled} da fila exclusiva de cancelamento (broadcast por instância)
@@ -33,8 +32,7 @@ public class CancellationConsumer {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             EventEnvelopeCodec.Decoded decoded = codec.decode(message.getBody());
-            ProcessingCancelledMessage wire =
-                    codec.toPayload(decoded.payload(), ProcessingCancelledMessage.class);
+            ProcessingCancelledMessage wire = codec.toPayload(decoded.payload(), ProcessingCancelledMessage.class);
 
             if (wire.jobId() != null) {
                 registry.markCancelled(wire.jobId());

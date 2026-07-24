@@ -1,5 +1,6 @@
 package br.com.fiapx.workers.adapter.messaging;
 
+import br.com.fiapx.workers.config.WorkersProperties;
 import br.com.fiapx.workers.domain.event.ProcessingFailed;
 import br.com.fiapx.workers.domain.port.EventPublisher;
 import org.slf4j.Logger;
@@ -8,7 +9,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,11 +35,22 @@ public class JobFailureHandler {
     private final String retryQueue;
     private final String dlqQueue;
 
-    public JobFailureHandler(RabbitTemplate rabbitTemplate,
-                             EventPublisher publisher,
-                             @Value("${workers.retry.delays-ms}") long[] delaysMs,
-                             @Value("${workers.rabbit.queue-retry}") String retryQueue,
-                             @Value("${workers.rabbit.queue-dlq}") String dlqQueue) {
+    @Autowired
+    public JobFailureHandler(RabbitTemplate rabbitTemplate, EventPublisher publisher, WorkersProperties props) {
+        this(
+                rabbitTemplate,
+                publisher,
+                props.retry().delaysMs(),
+                props.rabbit().queueRetry(),
+                props.rabbit().queueDlq());
+    }
+
+    JobFailureHandler(
+            RabbitTemplate rabbitTemplate,
+            EventPublisher publisher,
+            long[] delaysMs,
+            String retryQueue,
+            String dlqQueue) {
         this.rabbitTemplate = rabbitTemplate;
         this.publisher = publisher;
         this.delaysMs = delaysMs;
@@ -55,20 +67,27 @@ public class JobFailureHandler {
     /**
      * Falha durante o processamento de um job já decodificado.
      */
-    public void onProcessingFailure(Message original, int attempt, String jobId, String correlationId,
-                                    String errorCode, String friendlyMessage, boolean transientError) {
+    public void onProcessingFailure(
+            Message original,
+            int attempt,
+            String jobId,
+            String correlationId,
+            String errorCode,
+            String friendlyMessage,
+            boolean transientError) {
         if (transientError && attempt < delaysMs.length) {
             long delay = delaysMs[attempt];
-            log.warn("Job {} falhou (transitória, tentativa {}); reenfileirando em {}ms",
-                    jobId, attempt + 1, delay);
+            log.warn("Job {} falhou (transitória, tentativa {}); reenfileirando em {}ms", jobId, attempt + 1, delay);
             republishToRetry(original, attempt + 1, delay, correlationId);
         } else {
-            log.error("Job {} para DLQ ({}): {}", jobId,
-                    transientError ? "tentativas esgotadas" : "falha determinística", errorCode);
+            log.error(
+                    "Job {} para DLQ ({}): {}",
+                    jobId,
+                    transientError ? "tentativas esgotadas" : "falha determinística",
+                    errorCode);
             if (jobId != null) {
                 publisher.publish(
-                        new ProcessingFailed(jobId, errorCode, friendlyMessage, transientError),
-                        correlationId);
+                        new ProcessingFailed(jobId, errorCode, friendlyMessage, transientError), correlationId);
             }
             republishToDlq(original, errorCode);
         }
@@ -82,8 +101,11 @@ public class JobFailureHandler {
         log.warn("Mensagem malformada para DLQ (jobId={})", jobId);
         if (jobId != null) {
             publisher.publish(
-                    new ProcessingFailed(jobId, "INVALID_MESSAGE",
-                            "Não foi possível interpretar a solicitação de processamento.", false),
+                    new ProcessingFailed(
+                            jobId,
+                            "INVALID_MESSAGE",
+                            "Não foi possível interpretar a solicitação de processamento.",
+                            false),
                     correlationId);
         }
         republishToDlq(original, "INVALID_MESSAGE");

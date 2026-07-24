@@ -1,12 +1,11 @@
 package br.com.fiapx.workers.interfaces;
 
+import java.util.Map;
 import org.springframework.boot.actuate.health.HealthEndpoint;
 import org.springframework.boot.actuate.health.Status;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 /**
  * Expõe {@code GET /ready} para uniformizar o probe de readiness com o fiapx-core e o
@@ -30,8 +29,6 @@ public class ReadinessController {
     @GetMapping("/ready")
     public ResponseEntity<Map<String, String>> ready() {
         boolean up = Status.UP.equals(healthEndpoint.health().getStatus());
-        return ResponseEntity
-                .status(up ? 200 : 503)
-                .body(Map.of("status", up ? "ready" : "not_ready"));
+        return ResponseEntity.status(up ? 200 : 503).body(Map.of("status", up ? "ready" : "not_ready"));
     }
 }

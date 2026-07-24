@@ -1,10 +1,9 @@
 package br.com.fiapx.workers.adapter.cancellation;
 
 import br.com.fiapx.workers.domain.port.CancellationRegistry;
-import org.springframework.stereotype.Component;
-
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.stereotype.Component;
 
 /**
  * Registro em memória de jobs cancelados. Cada réplica mantém o seu — o cancelamento é

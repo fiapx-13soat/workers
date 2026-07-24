@@ -8,9 +8,4 @@ import br.com.fiapx.workers.domain.model.ProcessingParameters;
  * {@code DEFAULT_FPS}.
  */
 public record ProcessingRequested(
-        String jobId,
-        String videoStorageKey,
-        ProcessingParameters parameters,
-        String ownerId
-) {
-}
+        String jobId, String videoStorageKey, ProcessingParameters parameters, String ownerId) {}

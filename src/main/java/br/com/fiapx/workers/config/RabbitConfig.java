@@ -10,12 +10,9 @@ import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.amqp.SimpleRabbitListenerContainerFactoryConfigurer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.time.Duration;
 
 /**
  * Topologia RabbitMQ do lado do worker.
@@ -40,17 +37,16 @@ public class RabbitConfig {
 
     /** Exchange do contrato (topic, durável) — declaração idempotente, igual à do infra. */
     @Bean
-    public TopicExchange videoProcessingExchange(@Value("${workers.rabbit.exchange}") String exchange) {
-        return ExchangeBuilder.topicExchange(exchange).durable(true).build();
+    public TopicExchange videoProcessingExchange(WorkersProperties props) {
+        return ExchangeBuilder.topicExchange(props.rabbit().exchange())
+                .durable(true)
+                .build();
     }
 
     /** Fila anônima, exclusiva e auto-delete: uma por instância de worker. */
     @Bean
     public Queue workerCancellationQueue() {
-        return QueueBuilder.nonDurable()
-                .exclusive()
-                .autoDelete()
-                .build();
+        return QueueBuilder.nonDurable().exclusive().autoDelete().build();
     }
 
     @Bean
@@ -70,11 +66,11 @@ public class RabbitConfig {
     public SimpleRabbitListenerContainerFactory rabbitListenerContainerFactory(
             SimpleRabbitListenerContainerFactoryConfigurer configurer,
             ConnectionFactory connectionFactory,
-            @Value("${workers.shutdown-timeout:120s}") Duration shutdownTimeout) {
+            WorkersProperties props) {
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         configurer.configure(factory, connectionFactory);
         factory.setContainerCustomizer(container -> {
-            container.setShutdownTimeout(shutdownTimeout.toMillis());
+            container.setShutdownTimeout(props.shutdownTimeout().toMillis());
             container.setForceCloseChannel(true);
         });
         return factory;
