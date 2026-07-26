@@ -6,6 +6,10 @@
             <encoder class="net.logstash.logback.encoder.LogstashEncoder">
                 <includeMdcKeyName>correlationId</includeMdcKeyName>
                 <includeMdcKeyName>jobId</includeMdcKeyName>
+                <!-- trace_id/span_id são injetados no MDC pelo agente OpenTelemetry (quando
+                     ligado) — correlaciona log ↔ trace no Jaeger, como nos serviços Node. -->
+                <includeMdcKeyName>trace_id</includeMdcKeyName>
+                <includeMdcKeyName>span_id</includeMdcKeyName>
                 <customFields>{"service":"fiapx-workers"}</customFields>
             </encoder>
         </appender>
