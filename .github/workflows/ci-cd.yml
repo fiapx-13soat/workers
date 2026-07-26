@@ -7,10 +7,8 @@ on:
   pull_request:
     branches: [main]
 
-# OIDC: sem access key em secret (contrato com o fiapx-infra)
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   test:
@@ -52,12 +50,15 @@ jobs:
             echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           fi
 
-      # Assume a role via OIDC; ARN publicado como org variable pelo fiapx-infra
-      - name: Configurar credenciais AWS (OIDC)
+      # Learner Lab: sem OIDC. Credenciais temporárias do lab vêm dos secrets
+      # (rotacionam a cada sessão do lab — recolar antes de publicar).
+      - name: Configurar credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_GHA_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
 
       - name: Login no ECR
         id: ecr
@@ -68,6 +69,7 @@ jobs:
           IMAGE: ${{ steps.ecr.outputs.registry }}/fiapx-workers
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          docker build -t "$IMAGE:$TAG" .
+          docker build -t "$IMAGE:$TAG" -t "$IMAGE:latest" .
           docker push "$IMAGE:$TAG"
-          echo "Imagem publicada: $IMAGE:$TAG"
+          docker push "$IMAGE:latest"
+          echo "Imagem publicada: $IMAGE:$TAG (+ latest)"
