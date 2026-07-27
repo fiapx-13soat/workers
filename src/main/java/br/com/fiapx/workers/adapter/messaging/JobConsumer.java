@@ -1,13 +1,13 @@
 package br.com.fiapx.workers.adapter.messaging;
 
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import br.com.fiapx.workers.adapter.messaging.wire.ProcessingRequestedMessage;
 import br.com.fiapx.workers.adapter.observability.WorkerMetrics;
 import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.model.ProcessingParameters;
-import static net.logstash.logback.argument.StructuredArguments.kv;
-
 import com.rabbitmq.client.Channel;
 import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
@@ -63,8 +63,7 @@ public class JobConsumer {
             try {
                 EventEnvelopeCodec.Decoded decoded = codec.decode(message.getBody());
                 correlationId = decoded.correlationId();
-                ProcessingRequestedMessage wire =
-                        codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
+                ProcessingRequestedMessage wire = codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
                 request = toDomain(wire);
             } catch (MessageDecodingException | IllegalArgumentException bad) {
                 jobId = tryExtractJobId(message);
@@ -88,13 +87,7 @@ public class JobConsumer {
                 outcome = "failed";
                 metrics.failed(sample);
                 failureHandler.onProcessingFailure(
-                        message,
-                        attempt,
-                        jobId,
-                        correlationId,
-                        pe.errorCode(),
-                        pe.friendlyMessage(),
-                        pe.isTransient());
+                        message, attempt, jobId, correlationId, pe.errorCode(), pe.friendlyMessage(), pe.isTransient());
                 channel.basicAck(deliveryTag, false);
             } catch (Exception e) {
                 // inesperado → tratado como transitório (dá chance de retry)
@@ -102,13 +95,7 @@ public class JobConsumer {
                 metrics.failed(sample);
                 log.error("Erro inesperado no job {}: {}", jobId, e.getMessage(), e);
                 failureHandler.onProcessingFailure(
-                        message,
-                        attempt,
-                        jobId,
-                        correlationId,
-                        "INTERNAL",
-                        "Erro interno ao processar o vídeo.",
-                        true);
+                        message, attempt, jobId, correlationId, "INTERNAL", "Erro interno ao processar o vídeo.", true);
                 channel.basicAck(deliveryTag, false);
             } finally {
                 MDC.clear();
