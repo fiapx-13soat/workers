@@ -6,6 +6,8 @@ import br.com.fiapx.workers.application.ProcessVideoUseCase;
 import br.com.fiapx.workers.domain.event.ProcessingRequested;
 import br.com.fiapx.workers.domain.model.ProcessingException;
 import br.com.fiapx.workers.domain.model.ProcessingParameters;
+import static net.logstash.logback.argument.StructuredArguments.kv;
+
 import com.rabbitmq.client.Channel;
 import io.micrometer.core.instrument.Timer;
 import java.io.IOException;
@@ -48,58 +50,80 @@ public class JobConsumer {
 
     @RabbitListener(queues = "${workers.rabbit.queue-jobs}")
     public void onJob(Message message, Channel channel) throws IOException {
+        long start = System.currentTimeMillis();
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         int attempt = failureHandler.attemptOf(message);
+        String jobId = null;
+        String correlationId = null;
+        String outcome = "ok";
 
-        // falha na decodificação = mensagem malformada → DLQ, sem retry
-        ProcessingRequested request;
-        String correlationId;
         try {
-            EventEnvelopeCodec.Decoded decoded = codec.decode(message.getBody());
-            correlationId = decoded.correlationId();
-            ProcessingRequestedMessage wire = codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
-            request = toDomain(wire);
-        } catch (MessageDecodingException | IllegalArgumentException bad) {
-            String jobId = tryExtractJobId(message);
-            metrics.malformed();
-            failureHandler.onMalformedMessage(message, jobId, tryExtractCorrelationId(message));
-            channel.basicAck(deliveryTag, false);
-            return;
-        }
+            // falha na decodificação = mensagem malformada → DLQ, sem retry
+            ProcessingRequested request;
+            try {
+                EventEnvelopeCodec.Decoded decoded = codec.decode(message.getBody());
+                correlationId = decoded.correlationId();
+                ProcessingRequestedMessage wire =
+                        codec.toPayload(decoded.payload(), ProcessingRequestedMessage.class);
+                request = toDomain(wire);
+            } catch (MessageDecodingException | IllegalArgumentException bad) {
+                jobId = tryExtractJobId(message);
+                correlationId = tryExtractCorrelationId(message);
+                outcome = "malformed";
+                metrics.malformed();
+                failureHandler.onMalformedMessage(message, jobId, correlationId);
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
 
-        MDC.put("correlationId", correlationId);
-        MDC.put("jobId", request.jobId());
-        Timer.Sample sample = metrics.startProcessing();
-        try {
-            useCase.handle(request, correlationId);
-            metrics.completed(sample);
-            channel.basicAck(deliveryTag, false);
-        } catch (ProcessingException pe) {
-            metrics.failed(sample);
-            failureHandler.onProcessingFailure(
-                    message,
-                    attempt,
-                    request.jobId(),
-                    correlationId,
-                    pe.errorCode(),
-                    pe.friendlyMessage(),
-                    pe.isTransient());
-            channel.basicAck(deliveryTag, false);
-        } catch (Exception e) {
-            // inesperado → tratado como transitório (dá chance de retry)
-            metrics.failed(sample);
-            log.error("Erro inesperado no job {}: {}", request.jobId(), e.getMessage(), e);
-            failureHandler.onProcessingFailure(
-                    message,
-                    attempt,
-                    request.jobId(),
-                    correlationId,
-                    "INTERNAL",
-                    "Erro interno ao processar o vídeo.",
-                    true);
-            channel.basicAck(deliveryTag, false);
+            jobId = request.jobId();
+            MDC.put("correlationId", correlationId);
+            MDC.put("jobId", jobId);
+            Timer.Sample sample = metrics.startProcessing();
+            try {
+                useCase.handle(request, correlationId);
+                metrics.completed(sample);
+                channel.basicAck(deliveryTag, false);
+            } catch (ProcessingException pe) {
+                outcome = "failed";
+                metrics.failed(sample);
+                failureHandler.onProcessingFailure(
+                        message,
+                        attempt,
+                        jobId,
+                        correlationId,
+                        pe.errorCode(),
+                        pe.friendlyMessage(),
+                        pe.isTransient());
+                channel.basicAck(deliveryTag, false);
+            } catch (Exception e) {
+                // inesperado → tratado como transitório (dá chance de retry)
+                outcome = "failed";
+                metrics.failed(sample);
+                log.error("Erro inesperado no job {}: {}", jobId, e.getMessage(), e);
+                failureHandler.onProcessingFailure(
+                        message,
+                        attempt,
+                        jobId,
+                        correlationId,
+                        "INTERNAL",
+                        "Erro interno ao processar o vídeo.",
+                        true);
+                channel.basicAck(deliveryTag, false);
+            } finally {
+                MDC.clear();
+            }
         } finally {
-            MDC.clear();
+            // Um evento canônico (wide event) por job consumido. jobId/correlationId explícitos
+            // porque o MDC já foi limpo; trace_id vem do agente OTel no encode.
+            log.info(
+                    "job consumido",
+                    kv("event", "job_consumed"),
+                    kv("jobId", jobId),
+                    kv("correlationId", correlationId),
+                    kv("attempt", attempt),
+                    kv("outcome", outcome),
+                    kv("durationMs", System.currentTimeMillis() - start));
         }
     }
 

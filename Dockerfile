@@ -24,8 +24,15 @@ RUN groupadd -r app && useradd -r -g app -d /app app
 WORKDIR /app
 
 COPY --from=build /build/target/app.jar /app/app.jar
+
+# OTel Java agent (tracing distribuído). Auto-instrumenta Spring AMQP + JDBC + HTTP e propaga o
+# W3C trace context nos headers das mensagens. Fica DESLIGADO por padrão (OTEL_SDK_DISABLED=true):
+# o compose da bancada liga passando o endpoint do Jaeger; na AWS/CI fica inerte.
+ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.10.0/opentelemetry-javaagent.jar /app/otel-agent.jar
+
 RUN chown -R app:app /app
 USER app
+ENV OTEL_SDK_DISABLED=true
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-javaagent:/app/otel-agent.jar", "-jar", "/app/app.jar"]
